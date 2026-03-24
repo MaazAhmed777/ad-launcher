@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String          @id @default(cuid())
+  metaUserId  String?         @unique
+  name        String?
+  email       String?         @unique
+  metaToken   String?
+  tokenExpiry DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  adAccounts  MetaAdAccount[]
+  templates   AdTemplate[]
+  apiKeys     ApiKey[]
+  batches     AdBatch[]
+}
+
+model MetaAdAccount {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String
+  name      String
+  currency  String?
+  timezone  String?
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, accountId])
+}
+
+model AdBatch {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String?
+  accountId   String
+  status      String   @default("pending")
+  totalAds    Int      @default(0)
+  launchedAds Int      @default(0)
+  createdAt   DateTime @default(now())
+  ads         Ad[]
+}
+
+model Ad {
+  id             String    @id @default(cuid())
+  batchId        String
+  batch          AdBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  name           String
+  adSetId        String
+  primaryText    String?
+  headline       String?
+  cta            String?   @default("LEARN_MORE")
+  destinationUrl String?
+  displayUrl     String?
+  utmParams      String?
+  creativeUrl    String?
+  creativeType   String?
+  aspectRatio    String?
+  scheduledAt    DateTime?
+  metaAdId       String?
+  metaCreativeId String?
+  status         String    @default("pending")
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+}
+
+model AdTemplate {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  primaryText String?
+  headline    String?
+  cta         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String    @unique
+  name      String?
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+}
