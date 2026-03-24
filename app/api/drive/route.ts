@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { v4 as uuidv4 } from "uuid";
+import { v2 as cloudinary } from "cloudinary";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
+  api_key: process.env.CLOUDINARY_API_KEY!,
+  api_secret: process.env.CLOUDINARY_API_SECRET!,
+});
+
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -75,9 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === "import") {
-    // Download file from Drive and save locally
     const { fileId, filename, driveToken } = body;
-    await mkdir(UPLOAD_DIR, { recursive: true });
 
     const res = await fetch(`${DRIVE_API}/files/${fileId}?alt=media`, {
       headers: { Authorization: `Bearer ${driveToken}` },
@@ -86,17 +88,22 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await res.arrayBuffer());
     const ext = path.extname(filename).toLowerCase();
-    const safe = `${uuidv4()}${ext}`;
-    await writeFile(path.join(UPLOAD_DIR, safe), buffer);
-
     const isVideo = [".mp4", ".mov", ".avi", ".webm"].includes(ext);
-    const sizeLabel =
-      buffer.length < 1024 * 1024
-        ? `${(buffer.length / 1024).toFixed(0)} KB`
-        : `${(buffer.length / 1024 / 1024).toFixed(1)} MB`;
+
+    const result = await new Promise<any>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { resource_type: isVideo ? "video" : "image", folder: "ad-launcher" },
+        (error, result) => { if (error) reject(error); else resolve(result); }
+      );
+      stream.end(buffer);
+    });
+
+    const sizeLabel = buffer.length < 1024 * 1024
+      ? `${(buffer.length / 1024).toFixed(0)} KB`
+      : `${(buffer.length / 1024 / 1024).toFixed(1)} MB`;
 
     return NextResponse.json({
-      uploaded: [{ filename: safe, originalName: filename, url: `/uploads/${safe}`, isVideo, sizeLabel }],
+      uploaded: [{ filename: result.public_id, originalName: filename, url: result.secure_url, isVideo, sizeLabel }],
     });
   }
 

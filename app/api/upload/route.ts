@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
+import { v2 as cloudinary } from "cloudinary";
 import path from "path";
-import { v4 as uuidv4 } from "uuid";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
+  api_key: process.env.CLOUDINARY_API_KEY!,
+  api_secret: process.env.CLOUDINARY_API_SECRET!,
+});
 
 function fmtSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -12,9 +15,6 @@ function fmtSize(n: number) {
 }
 
 export async function POST(req: NextRequest) {
-
-  await mkdir(UPLOAD_DIR, { recursive: true });
-
   const formData = await req.formData();
   const files = formData.getAll("files") as File[];
 
@@ -22,14 +22,28 @@ export async function POST(req: NextRequest) {
   for (const file of files) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const ext = path.extname(file.name).toLowerCase();
-    const safe = `${uuidv4()}${ext}`;
-    await writeFile(path.join(UPLOAD_DIR, safe), buffer);
-
     const isVideo = [".mp4", ".mov", ".avi", ".webm"].includes(ext);
+
+    const result = await new Promise<any>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: isVideo ? "video" : "image",
+          folder: "ad-launcher",
+          use_filename: false,
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      stream.end(buffer);
+    });
+
     uploaded.push({
-      filename: safe,
+      filename: result.public_id,
       originalName: file.name,
-      url: `/uploads/${safe}`,
+      url: result.secure_url,
+      cloudinaryId: result.public_id,
       isVideo,
       sizeLabel: fmtSize(buffer.length),
     });

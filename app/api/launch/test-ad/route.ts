@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { uploadImageToMeta, uploadVideoToMeta } from "@/lib/meta";
-import { readFile } from "fs/promises";
-import path from "path";
-
 const META_API = "https://graph.facebook.com/v19.0";
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 
 async function metaPostDebug(endpoint: string, token: string, body: Record<string, string>) {
   const url = `${META_API}${endpoint}`;
@@ -202,8 +198,8 @@ export async function POST(req: NextRequest) {
 
   try {
     // Step 2: upload creative
-    const filepath = path.join(UPLOAD_DIR, path.basename(primary.filename));
-    const buffer = (await readFile(filepath)).buffer as ArrayBuffer;
+    const fileRes = await fetch(primary.url);
+    const buffer = (await fileRes.arrayBuffer()) as ArrayBuffer;
     steps.push({ step: "read_file", ok: true, bytes: buffer.byteLength });
 
     let asset: { videoId?: string; imageHash?: string; thumbnailUrl?: string } = {};

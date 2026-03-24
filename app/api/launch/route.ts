@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { metaPost, uploadImageToMeta, uploadVideoToMeta } from "@/lib/meta";
-import { readFile } from "fs/promises";
-import path from "path";
-
 const META_API = "https://graph.facebook.com/v19.0";
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 
 async function waitForVideo(videoId: string, token: string, maxMs = 30000): Promise<{ ready: boolean; thumbnailUrl?: string }> {
   const interval = 3000;
@@ -201,8 +197,8 @@ async function launchBatch(
 
       // Upload creatives needed
       async function uploadCreative(c: any) {
-        const filepath = path.join(UPLOAD_DIR, path.basename(c.filename));
-        const buffer = (await readFile(filepath)).buffer as ArrayBuffer;
+        const res = await fetch(c.url);
+        const buffer = (await res.arrayBuffer()) as ArrayBuffer;
         if (c.isVideo) {
           const { videoId } = await uploadVideoToMeta(accountId, token, buffer, c.originalName);
           return { videoId };
