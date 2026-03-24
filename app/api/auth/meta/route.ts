@@ -10,7 +10,7 @@ const REDIRECT_URI = process.env.NEXT_PUBLIC_URL + "/api/auth/meta/callback";
 export async function GET() {
   const scope = [
     "ads_management", "ads_read", "pages_show_list",
-    "pages_read_engagement", "business_management",
+    "pages_read_engagement",
   ].join(",");
 
   const url = new URL("https://www.facebook.com/dialog/oauth");
