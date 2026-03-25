@@ -2,10 +2,13 @@
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 
+
 export default function SettingsPage() {
   const [keys, setKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState("");
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [systemToken, setSystemToken] = useState("");
+  const [savingToken, setSavingToken] = useState(false);
 
   useEffect(() => {
     fetch("/api/keys").then(r => r.json()).then(d => setKeys(d.keys || []));
@@ -25,6 +28,23 @@ export default function SettingsPage() {
     await fetch(`/api/keys?id=${id}`, { method: "DELETE" });
     setKeys(prev => prev.filter(k => k.id !== id));
     toast.success("Deleted");
+  }
+
+  async function saveSystemToken() {
+    if (!systemToken.trim()) return;
+    setSavingToken(true);
+    try {
+      const res = await fetch("/api/auth/system-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: systemToken.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) toast.error(data.error || "Invalid token");
+      else { toast.success(`Token updated — connected as ${data.name}`); setSystemToken(""); }
+    } finally {
+      setSavingToken(false);
+    }
   }
 
   const SHEETS_SCRIPT = `
@@ -91,6 +111,31 @@ function launchAds() {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+
+      {/* System User Token */}
+      <div>
+        <h2 className="text-base font-bold text-gray-800 mb-1">Meta System User Token</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          Use a permanent system user token instead of personal OAuth. Tokens never expire and are not tied to your personal account.
+          Generate one in <strong>Meta Business Suite → Settings → Users → System Users</strong>.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            placeholder="Paste system user token…"
+            value={systemToken}
+            onChange={e => setSystemToken(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && saveSystemToken()}
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-indigo-400 outline-none"
+          />
+          <button
+            onClick={saveSystemToken}
+            disabled={savingToken || !systemToken.trim()}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+            {savingToken ? "Saving…" : "Save Token"}
+          </button>
+        </div>
+      </div>
 
       {/* API Keys */}
       <div>
