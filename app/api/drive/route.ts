@@ -78,6 +78,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(await res.json());
   }
 
+  if (body.action === "download") {
+    const { fileId, driveToken } = body;
+    const res = await fetch(`${DRIVE_API}/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${driveToken}` },
+    });
+    if (!res.ok) return NextResponse.json({ error: "Drive download failed" }, { status: 500 });
+    const buffer = await res.arrayBuffer();
+    return new NextResponse(buffer, {
+      headers: { "Content-Type": res.headers.get("Content-Type") || "application/octet-stream" },
+    });
+  }
+
   if (body.action === "import") {
     const { fileId, filename, driveToken } = body;
 

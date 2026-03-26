@@ -52,14 +52,37 @@ export default function DropZone() {
         const [dims, uploadResult] = await Promise.all([
           measureDimensions(file),
           (async () => {
-            const fd = new FormData();
-            fd.append("files", file);
             try {
-              const res = await fetch("/api/upload", { method: "POST", body: fd });
+              // Get signature from server
+              const sigRes = await fetch("/api/upload/sign");
+              const { timestamp, signature, folder, apiKey, cloudName } = await sigRes.json();
+
+              const isVideo = file.type.startsWith("video/");
+              const fd = new FormData();
+              fd.append("file", file);
+              fd.append("timestamp", String(timestamp));
+              fd.append("signature", signature);
+              fd.append("folder", folder);
+              fd.append("api_key", apiKey);
+
+              // Upload directly to Cloudinary (no Netlify size limit)
+              const res = await fetch(
+                `https://api.cloudinary.com/v1_1/${cloudName}/${isVideo ? "video" : "image"}/upload`,
+                { method: "POST", body: fd }
+              );
               const data = await res.json();
-              return data.uploaded?.[0] ?? null;
-            } catch {
-              toast.error(`Failed to upload ${file.name}`);
+              if (!data.secure_url) throw new Error(data.error?.message || "Upload failed");
+
+              const fmtSize = (n: number) => n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+              return {
+                filename: data.public_id,
+                originalName: file.name,
+                url: data.secure_url,
+                isVideo,
+                sizeLabel: fmtSize(file.size),
+              };
+            } catch (e: any) {
+              toast.error(`Failed to upload ${file.name}: ${e.message}`);
               return null;
             }
           })(),

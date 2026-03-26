@@ -100,22 +100,42 @@ export default function DriveImport() {
     const toImport = files.filter((f) => selected.has(f.id));
     const results: CreativeFile[] = [];
 
+    // Get Cloudinary signature once for the batch
+    const sigRes = await fetch("/api/upload/sign");
+    const { timestamp, signature, folder, apiKey, cloudName } = await sigRes.json();
+
     for (const file of toImport) {
       try {
-        const res = await fetch("/api/drive", {
+        const isVideo = file.mimeType?.startsWith("video/");
+
+        // Download from Drive via our API (server-side, no size limit issue here)
+        const driveRes = await fetch("/api/drive", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "import", fileId: file.id, filename: file.name, driveToken }),
+          body: JSON.stringify({ action: "download", fileId: file.id, driveToken }),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const d = await res.json();
-        if (d.uploaded) {
-          // Measure dimensions from the saved URL
-          for (const uploaded of d.uploaded) {
-            const dims = await measureFromUrl(uploaded.url, uploaded.isVideo);
-            results.push({ ...uploaded, width: dims.width, height: dims.height });
-          }
-        }
+        if (!driveRes.ok) throw new Error(`Drive download failed: HTTP ${driveRes.status}`);
+        const blob = await driveRes.blob();
+
+        // Upload directly to Cloudinary from browser
+        const fd = new FormData();
+        fd.append("file", blob, file.name);
+        fd.append("timestamp", String(timestamp));
+        fd.append("signature", signature);
+        fd.append("folder", folder);
+        fd.append("api_key", apiKey);
+
+        const cloudRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/${isVideo ? "video" : "image"}/upload`,
+          { method: "POST", body: fd }
+        );
+        const d = await cloudRes.json();
+        if (!d.secure_url) throw new Error(d.error?.message || "Cloudinary upload failed");
+
+        const fmtSize = (n: number) => n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+        const uploaded = { filename: d.public_id, originalName: file.name, url: d.secure_url, isVideo, sizeLabel: fmtSize(blob.size) };
+        const dims = await measureFromUrl(uploaded.url, uploaded.isVideo);
+        results.push({ ...uploaded, width: dims.width, height: dims.height });
       } catch (e: any) {
         toast.error(`Failed: ${file.name} — ${e.message}`);
       }
