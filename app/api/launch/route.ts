@@ -176,6 +176,22 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ batchId: batch.id });
 }
 
+async function uploadCreative(
+  c: any,
+  accountId: string,
+  token: string
+): Promise<{ videoId?: string; imageHash?: string }> {
+  const res = await fetch(c.url);
+  const buffer = (await res.arrayBuffer()) as ArrayBuffer;
+  if (c.isVideo) {
+    const { videoId } = await uploadVideoToMeta(accountId, token, buffer, c.originalName);
+    return { videoId };
+  } else {
+    const { hash } = await uploadImageToMeta(accountId, token, buffer, c.originalName);
+    return { imageHash: hash };
+  }
+}
+
 async function launchBatch(
   batchId: string,
   token: string,
@@ -190,69 +206,129 @@ async function launchBatch(
 
   for (const row of rows) {
     try {
-      const vertical = row.creatives.find((c: any) => c.aspectRatio === "9:16");
-      const feedCreative = row.creatives.find((c: any) => c.aspectRatio === "1:1" || c.aspectRatio === "4:5");
-      const primary = vertical || feedCreative || row.creatives[0];
-      if (!primary) throw new Error("No creative found in row");
-
-      // Upload creatives needed
-      async function uploadCreative(c: any) {
-        const res = await fetch(c.url);
-        const buffer = (await res.arrayBuffer()) as ArrayBuffer;
-        if (c.isVideo) {
-          const { videoId } = await uploadVideoToMeta(accountId, token, buffer, c.originalName);
-          return { videoId };
-        } else {
-          const { hash } = await uploadImageToMeta(accountId, token, buffer, c.originalName);
-          return { imageHash: hash };
-        }
-      }
-
-      const primaryAsset = await uploadCreative(primary);
       const link = row.destinationUrl || "https://example.com";
       const cta = resolveCta(row.cta || "LEARN_MORE", link);
 
-      // Wait for video to finish processing before creating creative
-      let videoThumbnailUrl: string | undefined;
-      if (primary.isVideo && primaryAsset.videoId) {
-        const { ready, thumbnailUrl } = await waitForVideo(primaryAsset.videoId, token, 30000);
-        if (!ready) throw new Error(`Video ${primaryAsset.videoId} did not finish processing`);
-        videoThumbnailUrl = thumbnailUrl;
-      }
+      const vertical = row.creatives.find((c: any) => c.aspectRatio === "9:16");
+      const square   = row.creatives.find((c: any) => c.aspectRatio === "1:1" || c.aspectRatio === "4:5");
 
-      let storySpec: Record<string, any>;
-      if (primary.isVideo) {
-        storySpec = {
-          page_id: pageId,
-          video_data: {
-            video_id: primaryAsset.videoId,
-            image_url: videoThumbnailUrl,
-            message: row.primaryText || undefined,
-            title: row.headline || undefined,
-            call_to_action: { type: cta, value: { link } },
-          },
+      const crBody: Record<string, string> = { name: row.name };
+      let primaryCreativeUrl = "";
+      let primaryIsVideo = false;
+
+      if (vertical && square) {
+        // ── Multi-format ad: asset_feed_spec with placement rules ──────────
+        const [vertAsset, sqAsset] = await Promise.all([
+          uploadCreative(vertical, accountId, token),
+          uploadCreative(square, accountId, token),
+        ]);
+
+        // Wait for any videos to finish processing
+        if (vertical.isVideo && vertAsset.videoId) {
+          const { ready } = await waitForVideo(vertAsset.videoId, token, 45000);
+          if (!ready) throw new Error("9:16 video did not finish processing in time");
+        }
+        if (square.isVideo && sqAsset.videoId) {
+          const { ready } = await waitForVideo(sqAsset.videoId, token, 45000);
+          if (!ready) throw new Error("1:1 video did not finish processing in time");
+        }
+
+        const videos: any[] = [];
+        const images: any[] = [];
+
+        if (vertical.isVideo) {
+          videos.push({ video_id: vertAsset.videoId, adlabels: [{ name: "9x16" }] });
+        } else {
+          images.push({ hash: vertAsset.imageHash, adlabels: [{ name: "9x16" }] });
+        }
+        if (square.isVideo) {
+          videos.push({ video_id: sqAsset.videoId, adlabels: [{ name: "1x1" }] });
+        } else {
+          images.push({ hash: sqAsset.imageHash, adlabels: [{ name: "1x1" }] });
+        }
+
+        const assetFeedSpec: any = {
+          call_to_action_types: [cta],
+          link_urls: [{ website_url: link }],
+          asset_customization_rules: [
+            {
+              customization_spec: {
+                publisher_platforms: ["instagram", "facebook"],
+                instagram_positions: ["story", "reels"],
+                facebook_positions: ["story", "reels"],
+              },
+              [vertical.isVideo ? "video_label" : "image_label"]: "9x16",
+            },
+            {
+              customization_spec: {
+                publisher_platforms: ["instagram", "facebook"],
+                instagram_positions: ["stream"],
+                facebook_positions: ["feed"],
+              },
+              [square.isVideo ? "video_label" : "image_label"]: "1x1",
+            },
+          ],
         };
+        if (row.primaryText) assetFeedSpec.bodies = [{ text: row.primaryText }];
+        if (row.headline)    assetFeedSpec.titles = [{ text: row.headline }];
+        if (videos.length)   assetFeedSpec.videos = videos;
+        if (images.length)   assetFeedSpec.images = images;
+
+        const storySpec: any = { page_id: pageId };
+        if (instagramAccountId) storySpec.instagram_actor_id = instagramAccountId;
+
+        crBody.object_story_spec = JSON.stringify(storySpec);
+        crBody.asset_feed_spec   = JSON.stringify(assetFeedSpec);
+
+        primaryCreativeUrl = vertical.url || square.url || "";
+        primaryIsVideo     = vertical.isVideo;
       } else {
-        storySpec = {
-          page_id: pageId,
-          link_data: {
-            image_hash: primaryAsset.imageHash,
-            link,
-            message: row.primaryText || undefined,
-            name: row.headline || undefined,
-            call_to_action: { type: cta, value: { link } },
-          },
-        };
-      }
-      if (instagramAccountId) storySpec.instagram_actor_id = instagramAccountId;
+        // ── Single-creative ad (fallback) ───────────────────────────────────
+        const primary = vertical || square || row.creatives[0];
+        if (!primary) throw new Error("No creative found in row");
 
-      const crBody: Record<string, string> = {
-        name: row.name,
-        object_story_spec: JSON.stringify(storySpec),
-      };
+        const primaryAsset = await uploadCreative(primary, accountId, token);
+        primaryCreativeUrl = primary.url || "";
+        primaryIsVideo     = primary.isVideo;
+
+        let videoThumbnailUrl: string | undefined;
+        if (primary.isVideo && primaryAsset.videoId) {
+          const { ready, thumbnailUrl } = await waitForVideo(primaryAsset.videoId, token, 30000);
+          if (!ready) throw new Error(`Video ${primaryAsset.videoId} did not finish processing`);
+          videoThumbnailUrl = thumbnailUrl;
+        }
+
+        let storySpec: Record<string, any>;
+        if (primary.isVideo) {
+          storySpec = {
+            page_id: pageId,
+            video_data: {
+              video_id: primaryAsset.videoId,
+              image_url: videoThumbnailUrl,
+              message: row.primaryText || undefined,
+              title: row.headline || undefined,
+              call_to_action: { type: cta, value: { link } },
+            },
+          };
+        } else {
+          storySpec = {
+            page_id: pageId,
+            link_data: {
+              image_hash: primaryAsset.imageHash,
+              link,
+              message: row.primaryText || undefined,
+              name: row.headline || undefined,
+              call_to_action: { type: cta, value: { link } },
+            },
+          };
+        }
+        if (instagramAccountId) storySpec.instagram_actor_id = instagramAccountId;
+
+        crBody.object_story_spec = JSON.stringify(storySpec);
+      }
 
       if (disableEnhancements) {
-        crBody["creative_features_spec"] = JSON.stringify({
+        crBody.creative_features_spec = JSON.stringify({
           standard_enhancements: { enroll_status: "OPT_OUT" },
         });
       }
@@ -293,8 +369,8 @@ async function launchBatch(
           headline: row.headline,
           cta: row.cta,
           destinationUrl: row.destinationUrl,
-          creativeUrl: primary.url || "",
-          creativeType: primary.isVideo ? "video" : "image",
+          creativeUrl: primaryCreativeUrl,
+          creativeType: primaryIsVideo ? "video" : "image",
           metaAdId: ar.id,
           metaCreativeId: cr.id,
           status: "launched",

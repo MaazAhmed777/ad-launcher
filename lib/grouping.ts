@@ -93,26 +93,75 @@ export function extractBaseName(filename: string): string {
   return base.trim();
 }
 
+/**
+ * Derive a clean base name from one or more creative filenames.
+ * Strips: file extension, _MM-YYYY date segment, aspect-ratio tokens (_9_16, _4_5, etc.),
+ * and trailing single-letter variant suffixes (_A, _B, _C, _D).
+ * If multiple files share the same concept, returns the common base.
+ */
+export function deriveCampaignBase(originalNames: string[]): string {
+  if (!originalNames.length) return "";
+
+  const stripFilename = (name: string): string => {
+    let base = name.replace(/\.[^.]+$/, ""); // remove extension
+    // Strip from _MM-YYYY date segment onward (e.g. _12-2025_9_16_A)
+    base = base.replace(/_\d{1,2}-\d{4}.*$/, "");
+    // Strip from _YYYY-MM-DD date segment onward (e.g. _2025-12-01_9_16_A)
+    base = base.replace(/_\d{4}-\d{2}-\d{2}.*$/, "");
+    // Strip from _YYYY-MM date segment onward
+    base = base.replace(/_\d{4}-\d{2}.*$/, "");
+    // Strip trailing aspect-ratio token (_9_16, _4_5, _1_1, _16_9, _4_3)
+    base = base.replace(/_\d+_\d+(?:_[A-Za-z])?$/, "");
+    // Strip trailing single-letter variant (_A, _B, _C, _D)
+    base = base.replace(/_[A-Z]$/i, "");
+    return base.trim();
+  };
+
+  const bases = originalNames.map(stripFilename).filter(Boolean);
+  if (!bases.length) return "";
+
+  const unique = [...new Set(bases)];
+  if (unique.length === 1) return unique[0];
+
+  // Find longest common underscore-delimited prefix across all bases
+  let common = unique[0];
+  for (const b of unique.slice(1)) {
+    while (common && !b.startsWith(common)) {
+      const lastUnderscore = common.lastIndexOf("_");
+      common = lastUnderscore > 0 ? common.slice(0, lastUnderscore) : "";
+    }
+  }
+  return common;
+}
+
 export function groupCreatives(files: CreativeFile[]): AdRow[] {
-  return files.map((file) => {
+  // Group files by concept base name so that e.g. Creative_9_16.mp4 and Creative_1_1.jpg
+  // land in the same row and are launched as a single multi-format ad.
+  const groups = new Map<string, CreativeFile[]>();
+
+  for (const file of files) {
     const ratio =
       file.width && file.height
         ? computeAspectRatio(file.width, file.height)
         : detectRatioFromName(file.originalName);
-    const name = file.originalName.replace(/\.[^.]+$/, "");
-    return {
-      id: crypto.randomUUID(),
-      baseName: name,
-      creatives: [{ ...file, aspectRatio: ratio }],
-      name,
-      primaryText: "",
-      headline: "",
-      cta: "LEARN_MORE",
-      destinationUrl: "",
-      displayUrl: "",
-      utmParams: "",
-      adSetId: "",
-      scheduledAt: undefined,
-    };
-  });
+    const fileWithRatio = { ...file, aspectRatio: ratio };
+    const key = extractBaseName(file.originalName) || file.originalName.replace(/\.[^.]+$/, "");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(fileWithRatio);
+  }
+
+  return Array.from(groups.entries()).map(([baseName, creatives]) => ({
+    id: crypto.randomUUID(),
+    baseName,
+    creatives,
+    name: baseName,
+    primaryText: "",
+    headline: "",
+    cta: "LEARN_MORE",
+    destinationUrl: "",
+    displayUrl: "",
+    utmParams: "",
+    adSetId: "",
+    scheduledAt: undefined,
+  }));
 }

@@ -54,6 +54,10 @@ export default function Topbar() {
         </div>
       )}
 
+      <a href="/api/auth/logout" className="text-xs text-gray-400 hover:text-gray-600 ml-2">
+        Sign out
+      </a>
+
       {connected === false && !showTokenInput && (
         <div className="flex items-center gap-2">
           <a href="/api/auth/meta"

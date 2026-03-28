@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { groupCreatives, AdRow, CreativeFile } from "@/lib/grouping";
+import { groupCreatives, deriveCampaignBase, AdRow, CreativeFile } from "@/lib/grouping";
 
 interface LaunchStore {
   // account & targeting assets
@@ -95,7 +95,19 @@ export const useLaunchStore = create<LaunchStore>((set, get) => ({
   addFiles: (files) => {
     const all = [...get().uploadedFiles, ...files];
     const rows = groupCreatives(all);
-    set({ uploadedFiles: all, rows, selectedRowIds: rows.map((r) => r.id) });
+    // Auto-fill campaign/ad set names from filenames if not already set
+    let nameUpdates: { newCampaignName?: string; newAdSetName?: string } = {};
+    if (files.length > 0 && !get().newCampaignName) {
+      const base = deriveCampaignBase(files.map((f) => f.originalName));
+      if (base) {
+        const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+        nameUpdates = {
+          newCampaignName: `${base}_${today}`,
+          newAdSetName: `${base}_${today}_AS`,
+        };
+      }
+    }
+    set({ uploadedFiles: all, rows, selectedRowIds: rows.map((r) => r.id), ...nameUpdates });
   },
   removeFile: (filename) => {
     const all = get().uploadedFiles.filter((f) => f.filename !== filename);
