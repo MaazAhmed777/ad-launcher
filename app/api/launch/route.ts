@@ -237,19 +237,40 @@ async function launchBatch(
         const images: any[] = [];
 
         if (vertical.isVideo) {
-          videos.push({ video_id: vertAsset.videoId });
+          videos.push({ video_id: vertAsset.videoId, adlabels: [{ name: "vertical" }] });
         } else {
-          images.push({ hash: vertAsset.imageHash });
+          images.push({ hash: vertAsset.imageHash, adlabels: [{ name: "vertical" }] });
         }
         if (square.isVideo) {
-          videos.push({ video_id: sqAsset.videoId });
+          videos.push({ video_id: sqAsset.videoId, adlabels: [{ name: "feed" }] });
         } else {
-          images.push({ hash: sqAsset.imageHash });
+          images.push({ hash: sqAsset.imageHash, adlabels: [{ name: "feed" }] });
         }
+
+        const vertLabel = vertical.isVideo ? "video_label" : "image_label";
+        const sqLabel   = square.isVideo   ? "video_label" : "image_label";
 
         const assetFeedSpec: any = {
           call_to_action_types: [cta],
           link_urls: [{ website_url: link }],
+          asset_customization_rules: [
+            {
+              customization_spec: {
+                publisher_platforms: ["instagram", "facebook"],
+                instagram_positions: ["story", "reels"],
+                facebook_positions: ["story", "facebook_reels"],
+              },
+              [vertLabel]: "vertical",
+            },
+            {
+              customization_spec: {
+                publisher_platforms: ["instagram", "facebook"],
+                instagram_positions: ["stream"],
+                facebook_positions: ["feed"],
+              },
+              [sqLabel]: "feed",
+            },
+          ],
         };
         if (row.primaryText) assetFeedSpec.bodies = [{ text: row.primaryText }];
         if (row.headline)    assetFeedSpec.titles = [{ text: row.headline }];
