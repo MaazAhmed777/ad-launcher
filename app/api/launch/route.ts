@@ -260,7 +260,7 @@ async function launchBatch(
                 instagram_positions: ["story", "reels"],
                 facebook_positions: ["story", "facebook_reels"],
               },
-              [vertLabel]: "vertical",
+              [vertLabel]: { name: "vertical" },
             },
             {
               customization_spec: {
@@ -268,7 +268,7 @@ async function launchBatch(
                 instagram_positions: ["stream"],
                 facebook_positions: ["feed"],
               },
-              [sqLabel]: "feed",
+              [sqLabel]: { name: "feed" },
             },
           ],
         };
