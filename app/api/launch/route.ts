@@ -255,7 +255,7 @@ async function launchBatch(
               customization_spec: {
                 publisher_platforms: ["instagram", "facebook"],
                 instagram_positions: ["story", "reels"],
-                facebook_positions: ["story", "reels"],
+                facebook_positions: ["story", "facebook_reels"],
               },
               [vertical.isVideo ? "video_label" : "image_label"]: "9x16",
             },
