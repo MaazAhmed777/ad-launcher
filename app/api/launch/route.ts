@@ -237,37 +237,19 @@ async function launchBatch(
         const images: any[] = [];
 
         if (vertical.isVideo) {
-          videos.push({ video_id: vertAsset.videoId, adlabels: [{ name: "9x16" }] });
+          videos.push({ video_id: vertAsset.videoId });
         } else {
-          images.push({ hash: vertAsset.imageHash, adlabels: [{ name: "9x16" }] });
+          images.push({ hash: vertAsset.imageHash });
         }
         if (square.isVideo) {
-          videos.push({ video_id: sqAsset.videoId, adlabels: [{ name: "1x1" }] });
+          videos.push({ video_id: sqAsset.videoId });
         } else {
-          images.push({ hash: sqAsset.imageHash, adlabels: [{ name: "1x1" }] });
+          images.push({ hash: sqAsset.imageHash });
         }
 
         const assetFeedSpec: any = {
           call_to_action_types: [cta],
           link_urls: [{ website_url: link }],
-          asset_customization_rules: [
-            {
-              customization_spec: {
-                publisher_platforms: ["instagram", "facebook"],
-                instagram_positions: ["story", "reels"],
-                facebook_positions: ["story", "facebook_reels"],
-              },
-              [vertical.isVideo ? "video_label" : "image_label"]: "9x16",
-            },
-            {
-              customization_spec: {
-                publisher_platforms: ["instagram", "facebook"],
-                instagram_positions: ["stream"],
-                facebook_positions: ["feed"],
-              },
-              [square.isVideo ? "video_label" : "image_label"]: "1x1",
-            },
-          ],
         };
         if (row.primaryText) assetFeedSpec.bodies = [{ text: row.primaryText }];
         if (row.headline)    assetFeedSpec.titles = [{ text: row.headline }];
