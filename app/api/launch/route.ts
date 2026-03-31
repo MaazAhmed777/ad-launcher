@@ -216,7 +216,11 @@ async function launchBatch(
       let primaryCreativeUrl = "";
       let primaryIsVideo = false;
 
-      if (vertical && square) {
+      // Only attempt multi-format bundling when both creatives are the same media type.
+      // Meta's asset_feed_spec rejects mixed video+image in the same creative.
+      const canBundle = vertical && square && (vertical.isVideo === square.isVideo);
+
+      if (canBundle) {
         // ── Multi-format ad: asset_feed_spec with placement rules ──────────
         const [vertAsset, sqAsset] = await Promise.all([
           uploadCreative(vertical, accountId, token),
@@ -233,23 +237,6 @@ async function launchBatch(
           if (!ready) throw new Error("1:1 video did not finish processing in time");
         }
 
-        const videos: any[] = [];
-        const images: any[] = [];
-
-        if (vertical.isVideo) {
-          videos.push({ video_id: vertAsset.videoId, adlabels: [{ name: "vertical" }] });
-        } else {
-          images.push({ hash: vertAsset.imageHash, adlabels: [{ name: "vertical" }] });
-        }
-        if (square.isVideo) {
-          videos.push({ video_id: sqAsset.videoId, adlabels: [{ name: "feed" }] });
-        } else {
-          images.push({ hash: sqAsset.imageHash, adlabels: [{ name: "feed" }] });
-        }
-
-        const vertLabel = vertical.isVideo ? "video_label" : "image_label";
-        const sqLabel   = square.isVideo   ? "video_label" : "image_label";
-
         const assetFeedSpec: any = {
           call_to_action_types: [cta],
           link_urls: [{ website_url: link }],
@@ -260,7 +247,9 @@ async function launchBatch(
                 instagram_positions: ["story", "reels"],
                 facebook_positions: ["story", "facebook_reels"],
               },
-              [vertLabel]: { name: "vertical" },
+              ...(vertical.isVideo
+                ? { video_id: vertAsset.videoId }
+                : { image_hash: vertAsset.imageHash }),
             },
             {
               customization_spec: {
@@ -268,14 +257,26 @@ async function launchBatch(
                 instagram_positions: ["stream"],
                 facebook_positions: ["feed"],
               },
-              [sqLabel]: { name: "feed" },
+              ...(square.isVideo
+                ? { video_id: sqAsset.videoId }
+                : { image_hash: sqAsset.imageHash }),
             },
           ],
         };
         if (row.primaryText) assetFeedSpec.bodies = [{ text: row.primaryText }];
         if (row.headline)    assetFeedSpec.titles = [{ text: row.headline }];
-        if (videos.length)   assetFeedSpec.videos = videos;
-        if (images.length)   assetFeedSpec.images = images;
+
+        if (vertical.isVideo) {
+          assetFeedSpec.videos = [
+            { video_id: vertAsset.videoId },
+            { video_id: sqAsset.videoId },
+          ];
+        } else {
+          assetFeedSpec.images = [
+            { hash: vertAsset.imageHash },
+            { hash: sqAsset.imageHash },
+          ];
+        }
 
         const storySpec: any = { page_id: pageId };
         if (instagramAccountId) storySpec.instagram_actor_id = instagramAccountId;

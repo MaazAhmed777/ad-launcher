@@ -184,6 +184,10 @@ export default function LaunchButton() {
                 target="_blank"
                 className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700"
               >View in Ads Manager ↗</a>
+              <button
+                onClick={() => { setLaunchStatus("idle"); setBatchId(""); setProgress({ launched: 0, total: 0, done: false, logs: [] }); }}
+                className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-700"
+              >🔁 Publish Again</button>
             </div>
           )}
         </div>
