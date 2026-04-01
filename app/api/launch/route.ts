@@ -237,31 +237,10 @@ async function launchBatch(
           if (!ready) throw new Error("1:1 video did not finish processing in time");
         }
 
+        // Build asset feed — no customization rules, Meta auto-selects by aspect ratio
         const assetFeedSpec: any = {
           call_to_action_types: [cta],
           link_urls: [{ website_url: link }],
-          asset_customization_rules: [
-            {
-              customization_spec: {
-                publisher_platforms: ["instagram", "facebook"],
-                instagram_positions: ["story", "reels"],
-                facebook_positions: ["story", "facebook_reels"],
-              },
-              ...(vertical.isVideo
-                ? { video_id: vertAsset.videoId }
-                : { image_hash: vertAsset.imageHash }),
-            },
-            {
-              customization_spec: {
-                publisher_platforms: ["instagram", "facebook"],
-                instagram_positions: ["stream"],
-                facebook_positions: ["feed"],
-              },
-              ...(square.isVideo
-                ? { video_id: sqAsset.videoId }
-                : { image_hash: sqAsset.imageHash }),
-            },
-          ],
         };
         if (row.primaryText) assetFeedSpec.bodies = [{ text: row.primaryText }];
         if (row.headline)    assetFeedSpec.titles = [{ text: row.headline }];
