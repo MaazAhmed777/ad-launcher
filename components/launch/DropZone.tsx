@@ -19,11 +19,15 @@ function measureDimensions(file: File): Promise<{ width: number; height: number 
       img.src = url;
     } else if (file.type.startsWith("video/")) {
       const video = document.createElement("video");
-      video.onloadedmetadata = () => {
-        resolve({ width: video.videoWidth, height: video.videoHeight });
+      const cleanup = (w: number, h: number) => {
+        clearTimeout(timer);
         URL.revokeObjectURL(url);
+        resolve({ width: w, height: h });
       };
-      video.onerror = () => { resolve({ width: 0, height: 0 }); URL.revokeObjectURL(url); };
+      // Some large .mov files never fire onloadedmetadata — bail out after 4s
+      const timer = setTimeout(() => cleanup(0, 0), 4000);
+      video.onloadedmetadata = () => cleanup(video.videoWidth, video.videoHeight);
+      video.onerror = () => cleanup(0, 0);
       video.preload = "metadata";
       video.src = url;
       video.load();

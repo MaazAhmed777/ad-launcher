@@ -289,6 +289,8 @@ export default function CreativeGrid() {
   const selectedRowIds = useLaunchStore((s) => s.selectedRowIds);
   const selectAllRows = useLaunchStore((s) => s.selectAllRows);
   const deselectAllRows = useLaunchStore((s) => s.deselectAllRows);
+  const groupCreativesEnabled = useLaunchStore((s) => s.groupCreativesEnabled);
+  const toggleGroupCreatives = useLaunchStore((s) => s.toggleGroupCreatives);
 
   if (!rows.length) return null;
 
@@ -298,10 +300,24 @@ export default function CreativeGrid() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between px-1">
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Grouped Creatives</h3>
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+          {groupCreativesEnabled ? "Grouped Creatives" : "Creatives"}
+        </h3>
         <div className="flex items-center gap-3">
+          <button
+            onClick={toggleGroupCreatives}
+            className={`flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border transition-all ${
+              groupCreativesEnabled
+                ? "bg-indigo-50 border-indigo-300 text-indigo-600"
+                : "bg-gray-100 border-gray-300 text-gray-500"
+            }`}
+            title={groupCreativesEnabled ? "Creatives are grouped by concept — click to separate" : "Creatives are separate — click to group"}
+          >
+            <span>{groupCreativesEnabled ? "⊞" : "⊟"}</span>
+            <span>{groupCreativesEnabled ? "Grouped" : "Ungrouped"}</span>
+          </button>
           <span className="text-xs text-gray-400">
-            {rows.length} group{rows.length !== 1 ? "s" : ""} · {totalCreatives} creative{totalCreatives !== 1 ? "s" : ""}
+            {rows.length} {groupCreativesEnabled ? `group${rows.length !== 1 ? "s" : ""}` : `ad${rows.length !== 1 ? "s" : ""}`} · {totalCreatives} creative{totalCreatives !== 1 ? "s" : ""}
             {selectedRowIds.length < rows.length && (
               <span className="text-indigo-600 font-medium"> · {selectedRowIds.length} selected</span>
             )}

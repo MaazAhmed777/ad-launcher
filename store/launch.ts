@@ -1,5 +1,23 @@
 import { create } from "zustand";
-import { groupCreatives, deriveCampaignBase, AdRow, CreativeFile } from "@/lib/grouping";
+import { groupCreatives, deriveCampaignBase, AdRow, CreativeFile, computeAspectRatio } from "@/lib/grouping";
+
+function buildRows(files: CreativeFile[], grouped: boolean): AdRow[] {
+  if (grouped) return groupCreatives(files);
+  return files.map((file) => ({
+    id: crypto.randomUUID(),
+    baseName: file.originalName.replace(/\.[^.]+$/, ""),
+    creatives: [file],
+    name: file.originalName.replace(/\.[^.]+$/, ""),
+    primaryText: "",
+    headline: "",
+    cta: "LEARN_MORE",
+    destinationUrl: "",
+    displayUrl: "",
+    utmParams: "",
+    adSetId: "",
+    scheduledAt: undefined,
+  }));
+}
 
 interface LaunchStore {
   // account & targeting assets
@@ -50,6 +68,8 @@ interface LaunchStore {
   // settings
   disableEnhancements: boolean;
   toggleEnhancements: () => void;
+  groupCreativesEnabled: boolean;
+  toggleGroupCreatives: () => void;
   selectedAdSetIds: string[];
   setSelectedAdSetIds: (ids: string[]) => void;
 
@@ -94,7 +114,7 @@ export const useLaunchStore = create<LaunchStore>((set, get) => ({
   uploadedFiles: [],
   addFiles: (files) => {
     const all = [...get().uploadedFiles, ...files];
-    const rows = groupCreatives(all);
+    const rows = buildRows(all, get().groupCreativesEnabled);
     // Auto-fill campaign/ad set names from filenames if not already set
     let nameUpdates: { newCampaignName?: string; newAdSetName?: string } = {};
     if (files.length > 0 && !get().newCampaignName) {
@@ -111,7 +131,7 @@ export const useLaunchStore = create<LaunchStore>((set, get) => ({
   },
   removeFile: (filename) => {
     const all = get().uploadedFiles.filter((f) => f.filename !== filename);
-    const rows = groupCreatives(all);
+    const rows = buildRows(all, get().groupCreativesEnabled);
     set({ uploadedFiles: all, rows, selectedRowIds: rows.map((r) => r.id) });
   },
 
@@ -159,6 +179,12 @@ export const useLaunchStore = create<LaunchStore>((set, get) => ({
 
   disableEnhancements: false,
   toggleEnhancements: () => set({ disableEnhancements: !get().disableEnhancements }),
+  groupCreativesEnabled: true,
+  toggleGroupCreatives: () => {
+    const next = !get().groupCreativesEnabled;
+    const rows = buildRows(get().uploadedFiles, next);
+    set({ groupCreativesEnabled: next, rows, selectedRowIds: rows.map((r) => r.id) });
+  },
   selectedAdSetIds: [],
   setSelectedAdSetIds: (ids) => set({ selectedAdSetIds: ids }),
 
