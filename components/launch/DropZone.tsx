@@ -37,10 +37,53 @@ function measureDimensions(file: File): Promise<{ width: number; height: number 
   });
 }
 
+/** Upload a file to Cloudinary using XHR (supports large files + real progress) */
+function uploadToCloudinary(
+  file: File,
+  cloudName: string,
+  apiKey: string,
+  timestamp: string,
+  signature: string,
+  folder: string,
+  onProgress: (pct: number) => void
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const isVideo = file.type.startsWith("video/");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("timestamp", timestamp);
+    fd.append("signature", signature);
+    fd.append("folder", folder);
+    fd.append("api_key", apiKey);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `https://api.cloudinary.com/v1_1/${cloudName}/${isVideo ? "video" : "image"}/upload`);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (data.secure_url) resolve(data);
+        else reject(new Error(data.error?.message || "Upload failed"));
+      } catch {
+        reject(new Error(`Upload returned invalid response (HTTP ${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error — check your connection and file size"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out — file may be too large"));
+    xhr.timeout = 10 * 60 * 1000; // 10 minutes for large videos
+
+    xhr.send(fd);
+  });
+}
+
 export default function DropZone() {
   const addFiles = useLaunchStore((s) => s.addFiles);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  const [uploadPct, setUploadPct] = useState(0);
 
   const onDrop = useCallback(
     async (accepted: File[]) => {
@@ -48,34 +91,24 @@ export default function DropZone() {
       setUploading(true);
       const results: CreativeFile[] = [];
 
+      // Get signature once for the whole batch
+      const sigRes = await fetch("/api/upload/sign");
+      const { timestamp, signature, folder, apiKey, cloudName } = await sigRes.json();
+
       for (let i = 0; i < accepted.length; i++) {
         const file = accepted[i];
         setProgress(`Uploading ${i + 1} / ${accepted.length}: ${file.name}`);
+        setUploadPct(0);
 
-        // Measure dimensions in parallel with upload
         const [dims, uploadResult] = await Promise.all([
           measureDimensions(file),
           (async () => {
             try {
-              // Get signature from server
-              const sigRes = await fetch("/api/upload/sign");
-              const { timestamp, signature, folder, apiKey, cloudName } = await sigRes.json();
-
               const isVideo = file.type.startsWith("video/");
-              const fd = new FormData();
-              fd.append("file", file);
-              fd.append("timestamp", String(timestamp));
-              fd.append("signature", signature);
-              fd.append("folder", folder);
-              fd.append("api_key", apiKey);
-
-              // Upload directly to Cloudinary (no Netlify size limit)
-              const res = await fetch(
-                `https://api.cloudinary.com/v1_1/${cloudName}/${isVideo ? "video" : "image"}/upload`,
-                { method: "POST", body: fd }
+              const data = await uploadToCloudinary(
+                file, cloudName, apiKey, String(timestamp), signature, folder,
+                (pct) => setUploadPct(pct)
               );
-              const data = await res.json();
-              if (!data.secure_url) throw new Error(data.error?.message || "Upload failed");
 
               const fmtSize = (n: number) => n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
               return {
@@ -100,6 +133,7 @@ export default function DropZone() {
       addFiles(results);
       setUploading(false);
       setProgress(null);
+      setUploadPct(0);
       if (results.length) toast.success(`${results.length} file${results.length > 1 ? "s" : ""} uploaded`);
     },
     [addFiles]
@@ -123,8 +157,12 @@ export default function DropZone() {
         <div>
           <div className="text-sm font-medium text-indigo-600 mb-1">{progress}</div>
           <div className="w-full bg-gray-100 rounded-full h-1.5">
-            <div className="bg-indigo-500 h-1.5 rounded-full animate-pulse w-3/4" />
+            <div
+              className="bg-indigo-500 h-1.5 rounded-full transition-all duration-300"
+              style={{ width: `${uploadPct}%` }}
+            />
           </div>
+          <div className="text-xs text-gray-400 mt-1">{uploadPct}%</div>
         </div>
       ) : (
         <>
